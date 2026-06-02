@@ -1,0 +1,207 @@
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PuertoTurno</title>
+<style>
+:root{
+--bg:#f4f7fb;--card:#fff;--border:#dbe3ee;--primary:#1f5fae;
+--success:#1f9d55;--warn:#d97706;--danger:#dc2626;--text:#1f2937;
+}
+*{box-sizing:border-box} body{margin:0;font-family:Segoe UI,Arial,sans-serif;background:var(--bg);color:var(--text)}
+header{position:sticky;top:0;background:#fff;border-bottom:1px solid var(--border);padding:14px 20px;z-index:10}
+.top{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.brand{font-size:1.6rem;font-weight:700;color:var(--primary)}
+button{border:none;border-radius:10px;padding:10px 14px;background:var(--primary);color:white;cursor:pointer;transition:.25s}
+button:hover{transform:translateY(-1px)}
+.container{padding:18px;display:grid;gap:18px}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:16px;box-shadow:0 2px 10px rgba(0,0,0,.05)}
+.kpi{font-size:1.8rem;font-weight:700}
+.grid{display:grid;grid-template-columns:1.3fr 1fr;gap:18px}
+.status{padding:4px 10px;border-radius:999px;color:#fff;font-size:.85rem}
+.green{background:var(--success)} .amber{background:var(--warn)} .red{background:var(--danger)}
+input,select{width:100%;padding:10px;border:1px solid var(--border);border-radius:10px}
+.slots{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px;margin-top:10px}
+.slot{padding:10px;border-radius:12px;border:2px solid transparent;text-align:center;cursor:pointer}
+.disp{background:#e8f7ef}.lim{background:#fff4db}.sat{background:#ffe4e4}
+.selected{border-color:#000}
+.alert{padding:10px;border-radius:10px;margin-bottom:8px}
+.info{background:#e7f0ff}.warning{background:#fff1d6}.critical{background:#ffe2e2}
+.rec{font-size:1.1rem;font-weight:700}
+table{width:100%;border-collapse:collapse}
+th,td{padding:8px;border-bottom:1px solid var(--border);text-align:left}
+.loader{display:none}
+@media(max-width:900px){.grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header>
+<div class="top">
+<div>
+<div class="brand">PuertoTurno</div>
+<div>Estado terminal: <span id="terminalBadge" class="status green">Operativo</span></div>
+</div>
+<div>
+<span id="clock"></span>
+<button onclick="refreshPanel()">Actualizar panel</button>
+</div>
+</div>
+</header>
+
+<div class="container">
+<div class="cards">
+<div class="card"><div>Estado terminal</div><div id="kpiEstado" class="kpi">Operativo</div></div>
+<div class="card"><div>Slot recomendado</div><div id="kpiSlot" class="kpi">14:00</div></div>
+<div class="card"><div>Consultas hoy</div><div id="kpiConsultas" class="kpi">0</div></div>
+<div class="card"><div>Espera estimada</div><div id="kpiEspera" class="kpi">12 min</div></div>
+</div>
+
+<div class="grid">
+<div class="card">
+<h3>Consulta de Contenedor</h3>
+<input id="containerCode" placeholder="Ej: TPAU1234567">
+<br><br>
+<button onclick="consultar()">Consultar</button>
+<div class="loader" id="loader">Consultando...</div>
+<div id="resultado" style="margin-top:15px">Sin consulta.</div>
+</div>
+
+<div class="card">
+<h3>Recomendación Operativa</h3>
+<div id="recomendacion" class="rec">Se recomienda asistir entre 14:00 y 14:30.</div>
+</div>
+</div>
+
+<div class="grid">
+<div class="card">
+<h3>Disponibilidad de Slots</h3>
+<select id="tipoOperacion" onchange="renderSlots()">
+<option>Retiro</option>
+<option>Entrega</option>
+</select>
+<div class="slots" id="slots"></div>
+<br>
+<button onclick="reservar()">Simular reserva</button>
+</div>
+
+<div class="card">
+<h3>Flujo del Terminal</h3>
+<div id="flow" class="kpi">BAJO</div>
+<p id="flowText">Condiciones favorables para ingreso.</p>
+</div>
+</div>
+
+<div class="grid">
+<div class="card">
+<h3>Alertas Operativas</h3>
+<div id="alerts"></div>
+</div>
+
+<div class="card">
+<h3>Historial Reciente</h3>
+<table>
+<thead><tr><th>Contenedor</th><th>Operación</th><th>Hora</th><th>Estado</th></tr></thead>
+<tbody id="history"></tbody>
+</table>
+</div>
+</div>
+</div>
+
+<script>
+let consultas=0;
+let selectedSlot=null;
+
+const alertSets=[
+[{t:'Flujo normalizado',c:'info'},{t:'Acceso alternativo habilitado',c:'info'}],
+[{t:'Demora estimada de 20 minutos',c:'warning'}],
+[{t:'Alta congestión en acceso norte',c:'critical'},{t:'Revisión documental requerida',c:'warning'}]
+];
+
+function updateClock(){
+document.getElementById('clock').textContent=new Date().toLocaleString('es-CL');
+}
+setInterval(updateClock,1000); updateClock();
+
+function refreshPanel(){
+const levels=['BAJO','MEDIO','ALTO'];
+const lvl=levels[Math.floor(Math.random()*3)];
+document.getElementById('flow').textContent=lvl;
+const badge=document.getElementById('terminalBadge');
+if(lvl==='BAJO'){badge.className='status green';badge.textContent='Operativo';document.getElementById('kpiEspera').textContent='10 min';}
+if(lvl==='MEDIO'){badge.className='status amber';badge.textContent='Demanda media';document.getElementById('kpiEspera').textContent='22 min';}
+if(lvl==='ALTO'){badge.className='status red';badge.textContent='Congestionado';document.getElementById('kpiEspera').textContent='38 min';}
+document.getElementById('flowText').textContent=lvl==='ALTO'?'Evite ingreso inmediato.':'Condiciones aceptables para operación.';
+renderAlerts(lvl);
+}
+function renderAlerts(lvl){
+let idx=lvl==='BAJO'?0:lvl==='MEDIO'?1:2;
+document.getElementById('alerts').innerHTML=alertSets[idx].map(a=>`<div class="alert ${a.c}">${a.t}</div>`).join('');
+}
+refreshPanel();
+
+function consultar(){
+const code=document.getElementById('containerCode').value.trim();
+if(!code){alert('Ingrese un código');return;}
+document.getElementById('loader').style.display='block';
+setTimeout(()=>{
+document.getElementById('loader').style.display='none';
+const estados=['En patio','En revisión','Listo para retiro','En traslado'];
+const e=estados[Math.floor(Math.random()*estados.length)];
+document.getElementById('resultado').innerHTML=`
+<b>${code}</b><br>
+Estado: ${e}<br>
+Ubicación: Patio B-12<br>
+Observación: Operación dentro de parámetros.<br>
+Horario sugerido: 14:00 - 14:30<br>
+Prioridad: Media`;
+consultas++;
+document.getElementById('kpiConsultas').textContent=consultas;
+document.getElementById('recomendacion').textContent=e==='Listo para retiro'
+?'Contenedor listo para retiro en ventana óptima.'
+:'Se recomienda verificar documentación antes del ingreso.';
+addHistory(code,'Consulta',e);
+},1000);
+}
+
+function renderSlots(){
+const cont=document.getElementById('slots');
+const tipo=document.getElementById('tipoOperacion').value;
+const base=tipo==='Retiro'
+?[['08:00','disp'],['10:00','lim'],['12:00','sat'],['14:00','disp']]
+:[['09:00','lim'],['11:00','disp'],['13:00','disp'],['15:00','sat']];
+cont.innerHTML='';
+base.forEach(s=>{
+const d=document.createElement('div');
+d.className='slot '+s[1];
+d.innerHTML=`${s[0]}<br>${s[1]=='disp'?'Disponible':s[1]=='lim'?'Limitado':'Saturado'}`;
+d.onclick=()=>{
+document.querySelectorAll('.slot').forEach(x=>x.classList.remove('selected'));
+d.classList.add('selected');
+selectedSlot=s[0];
+document.getElementById('kpiSlot').textContent=s[0];
+document.getElementById('recomendacion').textContent='Horario sugerido actualizado: '+s[0];
+};
+cont.appendChild(d);
+});
+}
+renderSlots();
+
+function reservar(){
+if(!selectedSlot){alert('Seleccione un slot');return;}
+document.getElementById('recomendacion').textContent='Reserva simulada para '+selectedSlot+' confirmada.';
+addHistory('---','Reserva',selectedSlot);
+}
+
+function addHistory(c,o,r){
+const tr=document.createElement('tr');
+tr.innerHTML=`<td>${c}</td><td>${o}</td><td>${new Date().toLocaleTimeString('es-CL')}</td><td>${r}</td>`;
+const h=document.getElementById('history');
+h.prepend(tr);
+while(h.children.length>6)h.removeChild(h.lastChild);
+}
+</script>
+</body>
+</html>
